@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>周波数測定</title>
+</head>
+<body>
+  <h1>マイク入力の周波数を測定</h1>
+  <p>現在の周波数: <span id="freq">--</span> Hz</p>
+  <button onclick="start()">測定開始</button>
+
+  <script>
+    let audioContext;
+    let analyser;
+    let dataArray;
+    let bufferLength;
+
+    async function start() {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const source = audioContext.createMediaStreamSource(stream);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 2048;
+
+      source.connect(analyser);
+      bufferLength = analyser.fftSize;
+      dataArray = new Float32Array(bufferLength);
+
+      detectFrequency();
+    }
+
+    function detectFrequency() {
+      analyser.getFloatTimeDomainData(dataArray);
+      const frequency = autoCorrelate(dataArray, audioContext.sampleRate);
+      document.getElementById("freq").textContent = frequency ? frequency.toFixed(2) : "--";
+      requestAnimationFrame(detectFrequency);
+    }
+
+    // 周波数検出アルゴリズム（オートコリレーション）
+    function autoCorrelate(buf, sampleRate) {
+      let SIZE = buf.length;
+      let rms = 0;
+
+      for (let i = 0; i < SIZE; i++) {
+        let val = buf[i];
+        rms += val * val;
+      }
+      rms = Math.sqrt(rms / SIZE);
+      if (rms < 0.01) return null;
+
+      let r1 = 0, r2 = SIZE - 1, threshold = 0.2;
+      for (let i = 0; i < SIZE / 2; i++) {
+        if (Math.abs(buf[i]) < threshold) { r1 = i; break; }
+      }
+      for (let i = 1; i < SIZE / 2; i++) {
+        if (Math.abs(buf[SIZE - i]) < threshold) { r2 = SIZE - i; break; }
+      }
+
+      buf = buf.slice(r1, r2);
+      SIZE = buf.length;
+
+      let c = new Array(SIZE).fill(0);
+      for (let i = 0; i < SIZE; i++) {
+        for (let j = 0; j < SIZE - i; j++) {
+          c[i] = c[i] + buf[j] * buf[j + i];
+        }
+      }
+
+      let d = 0;
+      while (c[d] > c[d + 1]) d++;
+      let maxval = -1, maxpos = -1;
+      for (let i = d; i < SIZE; i++) {
+        if (c[i] > maxval) {
+          maxval = c[i];
+          maxpos = i;
+        }
+      }
+
+      let T0 = maxpos;
+      return sampleRate / T0;
+    }
+  </script>
+</body>
+</html>
