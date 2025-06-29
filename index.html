@@ -1,50 +1,74 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>周波数測定</title>
+  <title>周波数測定・波形表示・記録</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; }
+    canvas { border: 1px solid black; display: block; margin: 0 auto; }
+    table { margin: 1em auto; border-collapse: collapse; }
+    td, th { border: 1px solid #888; padding: 5px 10px; }
+  </style>
 </head>
 <body>
-  <h1>マイク入力の周波数を測定</h1>
-  <p>現在の周波数: <span id="freq">--</span> Hz</p>
-  <button onclick="start()">測定開始</button>
+  <h1>🎤 音声の周波数測定・波形表示・記録</h1>
+  <button onclick="start()">▶ 測定開始</button>
+  <canvas id="waveCanvas" width="600" height="150"></canvas>
+
+  <h2>📊 周波数記録（Hz）</h2>
+  <table id="logTable">
+    <thead>
+      <tr><th>#</th><th>時間</th><th>周波数 (Hz)</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
   <script>
-    let audioContext;
-    let analyser;
-    let dataArray;
-    let bufferLength;
+    let audioCtx, analyser, dataArray;
+    let canvas, ctx;
+    let count = 1;
 
-    async function start() {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const source = audioContext.createMediaStreamSource(stream);
-      analyser = audioContext.createAnalyser();
-      analyser.fftSize = 2048;
-
-      source.connect(analyser);
-      bufferLength = analyser.fftSize;
-      dataArray = new Float32Array(bufferLength);
-
-      detectFrequency();
+    function start() {
+      canvas = document.getElementById('waveCanvas');
+      ctx = canvas.getContext('2d');
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaStreamSource(stream);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        dataArray = new Float32Array(analyser.fftSize);
+        source.connect(analyser);
+        draw();
+      });
     }
 
-    function detectFrequency() {
+    function draw() {
       analyser.getFloatTimeDomainData(dataArray);
-      const frequency = autoCorrelate(dataArray, audioContext.sampleRate);
-      document.getElementById("freq").textContent = frequency ? frequency.toFixed(2) : "--";
-      requestAnimationFrame(detectFrequency);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.beginPath();
+      const sliceWidth = canvas.width / dataArray.length;
+      let x = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        const v = dataArray[i] * 0.5 + 0.5; // normalize
+        const y = v * canvas.height;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+        x += sliceWidth;
+      }
+      ctx.strokeStyle = 'blue';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      const freq = autoCorrelate(dataArray, audioCtx.sampleRate);
+      if (freq) logFrequency(freq);
+
+      requestAnimationFrame(draw);
     }
 
-    // 周波数検出アルゴリズム（オートコリレーション）
     function autoCorrelate(buf, sampleRate) {
       let SIZE = buf.length;
       let rms = 0;
-
-      for (let i = 0; i < SIZE; i++) {
-        let val = buf[i];
-        rms += val * val;
-      }
+      for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
       rms = Math.sqrt(rms / SIZE);
       if (rms < 0.01) return null;
 
@@ -55,14 +79,13 @@
       for (let i = 1; i < SIZE / 2; i++) {
         if (Math.abs(buf[SIZE - i]) < threshold) { r2 = SIZE - i; break; }
       }
-
       buf = buf.slice(r1, r2);
       SIZE = buf.length;
 
       let c = new Array(SIZE).fill(0);
       for (let i = 0; i < SIZE; i++) {
         for (let j = 0; j < SIZE - i; j++) {
-          c[i] = c[i] + buf[j] * buf[j + i];
+          c[i] += buf[j] * buf[j + i];
         }
       }
 
@@ -78,6 +101,13 @@
 
       let T0 = maxpos;
       return sampleRate / T0;
+    }
+
+    function logFrequency(freq) {
+      const now = new Date().toLocaleTimeString();
+      const row = document.createElement("tr");
+      row.innerHTML = `<td>${count++}</td><td>${now}</td><td>${freq.toFixed(2)}</td>`;
+      document.querySelector("#logTable tbody").appendChild(row);
     }
   </script>
 </body>
