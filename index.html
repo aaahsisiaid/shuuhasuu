@@ -31,15 +31,20 @@
     function start() {
       canvas = document.getElementById('waveCanvas');
       ctx = canvas.getContext('2d');
-      navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const source = audioCtx.createMediaStreamSource(stream);
-        analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 2048;
-        dataArray = new Float32Array(analyser.fftSize);
-        source.connect(analyser);
-        draw();
-      });
+
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const source = audioCtx.createMediaStreamSource(stream);
+          analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 2048;
+          dataArray = new Float32Array(analyser.fftSize);
+          source.connect(analyser);
+          draw();
+        })
+        .catch(err => {
+          alert("マイクの使用を許可してください：" + err.message);
+        });
     }
 
     function draw() {
@@ -49,8 +54,7 @@
       const sliceWidth = canvas.width / dataArray.length;
       let x = 0;
       for (let i = 0; i < dataArray.length; i++) {
-        const v = dataArray[i] * 0.5 + 0.5; // normalize
-        const y = v * canvas.height;
+        const y = (dataArray[i] * 0.5 + 0.5) * canvas.height;
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
         x += sliceWidth;
